@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Speech-to-Text Notepad</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .container {
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        input, button {
+            width: calc(100% - 20px);
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+        }
+        h2 {
+            text-align: center;
+        }
+        #notepad {
+            border: 1px solid #ccc;
+            padding: 10px;
+            min-height: 200px;
+            margin-top: 20px;
+        }
+        .file-options {
+            margin-top: 20px;
+        }
+        .search-bar {
+            width: calc(100% - 20px);
+            margin-bottom: 10px;
+        }
+        #settingsContainer, #dictionaryContainer, #libraryContainer {
+            display: none;
+        }
+        #translatorFrame, #libraryFrame {
+            width: 100%;
+            height: 400px;
+            border: none;
+            margin-top: 20px;
+        }
+        .speech-buttons {
+            display: flex;
+            justify-content: space-between;
+        }
+        .password-container {
+            display: flex;
+            align-items: center;
+        }
+        .toggle-password {
+            margin-left: -40px;
+            cursor: pointer;
+        }
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container" id="registration">
+    <h2>Register or Login</h2>
+    <input type="text" id="username" placeholder="Username" required>
+    <input type="date" id="dob" placeholder="Date of Birth" required>
+    <div class="password-container">
+        <input type="password" id="password" placeholder="Password" required>
+        <span class="toggle-password" onclick="togglePasswordVisibility()">👁️</span>
+    </div>
+    <button id="registerBtn" onclick="register()">Register</button>
+    <button id="loginBtn" onclick="login()">Login</button>
+    <p id="errorMsg" style="color: red;"></p>
+</div>
+
+<div class="container" id="notepadContainer" style="display:none;">
+    <h2>Speech-to-Text Notepad</h2>
+    <div id="notepad" contenteditable="true"></div>
+    <div class="speech-buttons">
+        <button id="startBtn" onclick="startSpeechRecognition()">Start</button>
+        <button id="stopBtn" onclick="stopSpeechRecognition()">Stop</button>
+    </div>
+    <div class="file-options">
+        <button onclick="saveText()">Save</button>
+        <button onclick="renameFile()">Rename</button>
+        <button onclick="deleteFile()">Delete</button>
+    </div>
+    <input type="text" class="search-bar" id="searchBar" onkeyup="filterFiles()" placeholder="Search files...">
+    <select id="fileDropdown" size="5" onchange="loadFile(this)"></select>
+    <button onclick="openSettings()">Settings</button>
+    <button onclick="openTranslate()">Translate</button>
+    <button onclick="openLibrary()">Library</button>
+</div>
+
+<div class="container" id="settingsContainer">
+    <h2>Settings</h2>
+    <div>
+        <strong>Personal Info:</strong><br>
+        <p id="personalInfo"></p>
+        <button onclick="changePassword()">Change Password</button>
+        <input type="password" id="oldPassword" placeholder="Current Password" style="display:none;">
+        <input type="password" id="newPassword" placeholder="New Password" style="display:none;">
+        <button id="savePasswordBtn" onclick="savePassword()" style="display:none;">Save New Password</button>
+    </div>
+    
+    <button onclick="logout()">Logout</button>
+    <button onclick="goToNotepad()">Back to Notepad</button>
+</div>
+
+<div class="container" id="dictionaryContainer">
+    <h2>Translate</h2>
+    <iframe id="translatorFrame" src="https://www.typingbaba.com/translator/english-to-gujarati-translation.php" title="Translator"></iframe>
+    <button onclick="goToNotepad()">Back to Notepad</button>
+</div>
+
+<div class="container" id="libraryContainer">
+    <h2>Library</h2>
+    <input type="text" id="librarySearchBar" onkeyup="filterBooks()" placeholder="Search books...">
+    <ul id="bookList"></ul>
+    <iframe id="libraryFrame" src="https://www.tiwariacademy.com/ncert-books/" title="Book Download" style="display:none;"></iframe>
+    <button onclick="goToNotepad()">Back to Notepad</button>
+</div>
+
+<script>
+    let users = JSON.parse(localStorage.getItem('users')) || {};
+    let currentUser = null;
+    let savedFiles = [];
+    let downloadedBooks = JSON.parse(localStorage.getItem('downloadedBooks')) || [];
+    let recognition;
+
+    function togglePasswordVisibility() {
+        const passwordInput = document.getElementById('password');
+        const type = passwordInput.type === "password" ? "text" : "password";
+        passwordInput.type = type;
+    }
+
+    function register() {
+        const username = document.getElementById('username').value;
+        const dob = document.getElementById('dob').value;
+        const password = document.getElementById('password').value;
+
+        if (users[username]) {
+            document.getElementById('errorMsg').innerText = 'Username is already taken.';
+        } else {
+            users[username] = { dob, password };
+            localStorage.setItem('users', JSON.stringify(users));
+            currentUser = username;
+            showNotepad();
+        }
+    }
+
+    function login() {
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+
+        if (users[username] && users[username].password === password) {
+            currentUser = username;
+            showNotepad();
+        } else {
+            document.getElementById('errorMsg').innerText = 'Invalid username or password.';
+        }
+    }
+
+    function showNotepad() {
+        document.getElementById('registration').style.display = 'none';
+        document.getElementById('notepadContainer').style.display = 'block';
+        loadFiles();
+        loadPersonalInfo();
+    }
+
+    function loadPersonalInfo() {
+        const user = users[currentUser];
+        document.getElementById('personalInfo').innerText = `Username: ${currentUser}, Date of Birth: ${user.dob}`;
+    }
+
+    function openSettings() {
+        document.getElementById('notepadContainer').style.display = 'none';
+        document.getElementById('settingsContainer').style.display = 'block';
+    }
+
+    function openTranslate() {
+        document.getElementById('notepadContainer').style.display = 'none';
+        document.getElementById('dictionaryContainer').style.display = 'block';
+    }
+
+    function openLibrary() {
+        document.getElementById('notepadContainer').style.display = 'none';
+        document.getElementById('libraryContainer').style.display = 'block';
+        loadBooks();
+        document.getElementById('libraryFrame').style.display = 'block'; // Show the iframe for the external website
+    }
+
+    function loadBooks() {
+        const bookList = document.getElementById('bookList');
+        bookList.innerHTML = '';
+        downloadedBooks.forEach(book => {
+            const li = document.createElement('li');
+            li.innerHTML = `<a href="${book.link}" target="_blank">${book.title}</a>`;
+            bookList.appendChild(li);
+        });
+    }
+
+    function filterBooks() {
+        const searchValue = document.getElementById('librarySearchBar').value.toLowerCase();
+        const bookList = document.getElementById('bookList');
+        const items = bookList.getElementsByTagName('li');
+        Array.from(items).forEach(item => {
+            item.style.display = item.textContent.toLowerCase().includes(searchValue) ? 'block' : 'none';
+        });
+    }
+
+    function downloadBook(title, link) {
+        downloadedBooks.push({ title, link });
+        localStorage.setItem('downloadedBooks', JSON.stringify(downloadedBooks));
+        loadBooks();
+        alert(`${title} has been added to your library.`);
+    }
+
+    function goToNotepad() {
+        document.getElementById('settingsContainer').style.display = 'none';
+        document.getElementById('dictionaryContainer').style.display = 'none';
+        document.getElementById('libraryContainer').style.display = 'none';
+        document.getElementById('notepadContainer').style.display = 'block';
+    }
+
+    function startSpeechRecognition() {
+        if ('webkitSpeechRecognition' in window) {
+            recognition = new webkitSpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = false;
+
+            recognition.onresult = function(event) {
+                const transcript = event.results[event.results.length - 1][0].transcript;
+                document.getElementById('notepad').innerText += ' ' + transcript;
+            };
+
+            recognition.onerror = function(event) {
+                console.error("Speech recognition error: ", event.error);
+            };
+
+            recognition.start();
+        } else {
+            alert("Speech recognition not supported in this browser.");
+        }
+    }
+
+    function stopSpeechRecognition() {
+        if (recognition) {
+            recognition.stop();
+        }
+    }
+
+    function saveText() {
+        const text = document.getElementById('notepad').innerText.trim();
+        if (!text) return;
+
+        const fileName = prompt("Enter file name:");
+        if (fileName) {
+            savedFiles.push({ name: fileName, content: text });
+            localStorage.setItem(currentUser, JSON.stringify(savedFiles));
+            loadFiles();
+            alert('File saved successfully!');
+        }
+    }
+
+    function loadFiles() {
+        const dropdown = document.getElementById('fileDropdown');
+        dropdown.innerHTML = '';
+        savedFiles = JSON.parse(localStorage.getItem(currentUser)) || [];
+        savedFiles.forEach(file => {
+            const option = document.createElement('option');
+            option.value = file.name;
+            option.textContent = file.name;
+            dropdown.appendChild(option);
+        });
+    }
+
+    function loadFile(dropdown) {
+        const selectedFile = savedFiles.find(file => file.name === dropdown.value);
+        if (selectedFile) {
+            document.getElementById('notepad').innerText = selectedFile.content;
+        }
+    }
+
+    function renameFile() {
+        const selectedFile = document.getElementById('fileDropdown').value;
+        const newFileName = prompt("Enter new file name:", selectedFile);
+        if (newFileName) {
+            const fileIndex = savedFiles.findIndex(file => file.name === selectedFile);
+            if (fileIndex > -1) {
+                savedFiles[fileIndex].name = newFileName;
+                localStorage.setItem(currentUser, JSON.stringify(savedFiles));
+                loadFiles();
+                alert('File renamed successfully!');
+            }
+        }
+    }
+
+    function deleteFile() {
+        const selectedFile = document.getElementById('fileDropdown').value;
+        savedFiles = savedFiles.filter(file => file.name !== selectedFile);
+        localStorage.setItem(currentUser, JSON.stringify(savedFiles));
+        loadFiles();
+        document.getElementById('notepad').innerText = '';
+        alert('File deleted successfully!');
+    }
+
+    function filterFiles() {
+        const searchValue = document.getElementById('searchBar').value.toLowerCase();
+        const dropdown = document.getElementById('fileDropdown');
+        Array.from(dropdown.options).forEach(option => {
+            option.style.display = option.text.toLowerCase().includes(searchValue) ? 'block' : 'none';
+        });
+    }
+
+    function changePassword() {
+        document.getElementById('oldPassword').style.display = 'block';
+        document.getElementById('newPassword').style.display = 'block';
+        document.getElementById('savePasswordBtn').style.display = 'block';
+    }
+
+    function savePassword() {
+        const oldPassword = document.getElementById('oldPassword').value;
+        const newPassword = document.getElementById('newPassword').value;
+
+        if (users[currentUser].password === oldPassword) {
+            users[currentUser].password = newPassword;
+            localStorage.setItem('users', JSON.stringify(users));
+            alert("Password changed successfully!");
+            document.getElementById('oldPassword').value = '';
+            document.getElementById('newPassword').value = '';
+            document.getElementById('oldPassword').style.display = 'none';
+            document.getElementById('newPassword').style.display = 'none';
+            document.getElementById('savePasswordBtn').style.display = 'none';
+        } else {
+            alert("Current password is incorrect.");
+        }
+    }
+
+    function logout() {
+        currentUser = null;
+        document.getElementById('notepadContainer').style.display = 'none';
+        document.getElementById('settingsContainer').style.display = 'none';
+        document.getElementById('dictionaryContainer').style.display = 'none';
+        document.getElementById('libraryContainer').style.display = 'none';
+        document.getElementById('registration').style.display = 'block';
+        document.getElementById('username').value = '';
+        document.getElementById('dob').value = '';
+        document.getElementById('password').value = '';
+    }
+</script>
+
+</body>
+</html>
